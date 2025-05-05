@@ -1,5 +1,5 @@
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
 
 from decoder import VAE_AttentionBlock, VAE_ResidualBlock
@@ -63,3 +63,37 @@ class VAE_Encoder(nn.Sequential):
         # (Batch size, 8, ~Height/8, ~Width/8) -> (Batch size, 8, ~Height/8, ~Width/8)
         nn.Conv2d(8, 8, kernel_size=1, padding=0)
     )
+
+    def forward(self, input: torch.Tensor, noise: torch.Tensor) -> torch.Tensor:
+        """ 
+        input: (Batcvh size, Channel, Height, Width)
+        noise: (Batch size, Out channel, ~Height/8, ~ Width/8)
+        """
+
+        for module in self:
+            if getattr(module, 'stride', None) == (2,2):
+                # (Padding Left, Padding Right, Padding Top, Padding Bottom)
+                input = F.pad(input,(0, 1, 0, 1))
+            input = module(input)
+        
+        # (Batch size, 8, ~Height/8, ~Width/8) -> two tensor of shape (Batch size, 4, ~Height/8, ~Width/8)
+        mean, log_variance = torch.chunk(input, 2, dims=1)
+
+        # (Batch size, 4, ~Height/8, ~Width/8) -> (Batch size, 4, ~Height/8, ~Width/8)
+        log_variance = torch.clamp(log_variance, -30, 20)
+        
+        # (Batch size, 4, ~Height/8, ~Width/8) -> (Batch size, 4, ~Height/8, ~Width/8)
+        variance = log_variance.exp()
+
+        # (Batch size, 4, ~Height/8, ~Width/8) -> (Batch size, 4, ~Height/8, ~Width/8)
+        std = variance.sqrt()
+
+        # Z = N(0, 1) [standard normal distribution with mean = 0 and variance = 1] -> X = N(mean, variance)
+        # X = mean + std * Z
+        x = mean + std * noise
+
+        # Scale the output by a constant
+        x *= 0.18215
+
+        return x
+
