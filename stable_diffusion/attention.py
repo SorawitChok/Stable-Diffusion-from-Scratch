@@ -7,12 +7,12 @@ import math
 class SelfAttention(nn.Module):
     def __init__(self, n_heads: int, d_model: int, in_proj_bias=True, out_proj_bias=True):
         super().__init__()
-        
+
         self.in_proj = nn.Linear(d_model, 3*d_model, bias=in_proj_bias)
         self.out_proj = nn.Linear(d_model, d_model, bias=out_proj_bias)
         self.n_heads = n_heads
         self.d_head = d_model // n_heads
-
+        
     def forward(self, input: torch.Tensor, casual_mask=False):
         """
         input: (Batch size, Seq len, d_model)
@@ -42,7 +42,7 @@ class SelfAttention(nn.Module):
 
         weight /= math.sqrt(self.d_head)
         weight = F.softmax(weight, d_model=-1)
-
+        
         # (Batch size, n_heads, Seq len, Seq len) @ (Batch size, n_heads, Seq len, Dk) -> (Batch size, n_heads, Seq len, Dk)
         output = weight @ v
 
@@ -53,5 +53,6 @@ class SelfAttention(nn.Module):
         output = output.reshape(input_shape)
 
         output = self.out_proj(output)
-
+        
         return output
+
