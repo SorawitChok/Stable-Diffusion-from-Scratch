@@ -23,6 +23,59 @@ class TimeEmbedding(nn.Module):
 
         # (1, 1280)
         return x
+    
+class UNET_ResidualBlock(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, n_time=1280):
+        super().__init__()
+        self.groupnorm_features = nn.GroupNorm(32, in_channels)
+        self.conv_features = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+        self.linear_time = nn.Linear(n_time, out_channels)
+
+        self.groupnorm_merged = nn.GroupNorm(32, out_channels)
+        self.conv_merged = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
+
+        if in_channels == out_channels:
+            self.residual_layer = nn.Identity()
+        else:
+            self.residual_layer = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+    
+    def forward(self, feature: torch.Tensor, time: torch.Tensor) -> torch.Tensor:
+        """
+        feature: (Batch size, in_channels, Height, Width)
+        time: (1, 1280)
+        """
+
+        residue = feature
+
+        feature = self.groupnorm_features(feature)
+
+        feature = F.silu(feature)
+
+        feature = self.conv_features(feature)
+
+        time = F.silu(time)
+
+        time = self.linear_time(time)
+
+        merged = feature + time.unsqueeze(-1).unsqueeze(-1)
+
+        merged = self.groupnorm_merged(merged)
+
+        merged = F.silu(merged)
+
+        merged = self.conv_merged(merged)
+
+        return merged + self.residual_layer(residue)
+    
+class Upsample(nn.Module):
+    def __init__(self, channels: int):
+        super().__init__()
+        self.conv = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        # (Batch size, features, Height, Width) -> (Batch size, features, 2*Height, 2*Width)
+        x = F.interpolate(input, scale_factor=2, mode="nearest")
+        return self.conv(x)
 
 class SwitchSequential(nn.Sequential):
 
@@ -104,6 +157,26 @@ class UNET(nn.Module):
 
             SwitchSequential(UNET_ResidualBlock(640, 320), UNET_AttentionBlock(8, 40)),
         ])
+
+class UNET_OutputLayer(nn.Moudle):
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__()
+        self.groupnorm = nn.GroupNorm(32, in_channels)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+    
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """
+        input: (Batch size, 320, ~Height/8, ~Width/8)
+        """
+
+        x = self.groupnorm(input)
+
+        x = F.silu(x)
+
+        x = self.conv(x)
+        
+        # (Batch size, 4, ~Height/8, ~Width/8)
+        return x
 
 class Diffusion(nn.Module):
     def __init__(self):
