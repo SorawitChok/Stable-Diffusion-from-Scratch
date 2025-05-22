@@ -9,7 +9,7 @@ HEIGHT = 512
 LATENT_WIDTH = WIDTH // 8
 LATENT_HEIGHT = HEIGHT // 8
 
-def generator(
+def generate(
     prompt: str,
     neg_prompt: str,
     input_image=None,
@@ -103,5 +103,43 @@ def generator(
         
         diffusion = models["diffusion"]
         diffusion.to(device)
+
+        timesteps = tqdm(sampler.timesteps)
+        for i, timestep in enumerate(timesteps):
+            # (1, 320) -> (1, 1280)
+            time_embedding = get_time_embedding(timestep).to(device)
+
+            # (Batch size, 4, LATENT_HEIGHT, LATENT_WIDTH)
+            model_input = latents
+
+            if do_cfg:
+                # (Batch size, 4, LATENT_HEIGHT, LATENT_WIDTH) -> # (2*Batch size, 4, LATENT_HEIGHT, LATENT_WIDTH)
+                model_input = model_input.repeat(2, 1, 1, 1)
+
+            # model_output is the predicted noise by UNET
+            model_output = diffusion(model_input, context, time_embedding)
+
+
+            if do_cfg:
+                output_cond, output_uncond = model_output.chunck(2)
+                model_output = cfg_scale * (output_cond - output_uncond) + output_uncond
+
+            # Remove noise predicted by the UNET
+            latents = sampler.step(timestep, latents, model_output)
+
+        to_idle(diffusion)
+
+        decoder = models["decoder"]
+        decoder.to(device)
+
+        image = decoder(latents)
+        to_idle(decoder)
+
+        image = rescale(image, (-1, 1), (0, 255))
+        # (Btach size, Channels, Height, Width) -> (Batch size, Height, Width, Channels)
+        image = image.permute(0, 2, 3, 1)
+        image = image.to("cpu", torch.uint8).numpy()
+        return image[0]
+    
 
         
