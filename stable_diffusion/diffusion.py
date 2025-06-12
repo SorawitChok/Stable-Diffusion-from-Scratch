@@ -27,8 +27,8 @@ class TimeEmbedding(nn.Module):
 class UNET_ResidualBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, n_time=1280):
         super().__init__()
-        self.groupnorm_features = nn.GroupNorm(32, in_channels)
-        self.conv_features = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+        self.groupnorm_feature = nn.GroupNorm(32, in_channels)
+        self.conv_feature = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
         self.linear_time = nn.Linear(n_time, out_channels)
 
         self.groupnorm_merged = nn.GroupNorm(32, out_channels)
@@ -37,7 +37,7 @@ class UNET_ResidualBlock(nn.Module):
         if in_channels == out_channels:
             self.residual_layer = nn.Identity()
         else:
-            self.residual_layer = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+            self.residual_layer = nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0)
     
     def forward(self, feature: torch.Tensor, time: torch.Tensor) -> torch.Tensor:
         """
@@ -47,11 +47,11 @@ class UNET_ResidualBlock(nn.Module):
 
         residue = feature
 
-        feature = self.groupnorm_features(feature)
+        feature = self.groupnorm_feature(feature)
 
         feature = F.silu(feature)
 
-        feature = self.conv_features(feature)
+        feature = self.conv_feature(feature)
 
         time = F.silu(time)
 
@@ -76,7 +76,7 @@ class UNET_AttentionBlock(nn.Module):
         self.conv_input = nn.Conv2d(channels, channels, kernel_size=1, padding=0)
 
         self.layernorm_1 = nn.LayerNorm(channels)
-        self.attention_1 = SelfAttention(n_heads, channels)
+        self.attention_1 = SelfAttention(n_heads, channels, in_proj_bias=False)
         self.layernorm_2 = nn.LayerNorm(channels)
         self.attention_2 = CrossAttention(n_heads, channels, d_context, in_proj_bias=False)
         self.layernorm_3 = nn.LayerNorm(channels)
@@ -132,6 +132,8 @@ class UNET_AttentionBlock(nn.Module):
 
         x = x*F.gelu(gate)
 
+        x = self.linear_geglu_2(x)
+
         x += residue_short
 
         # (Batch size, Height*Width, feature) -> (Batch size, features, Height*Width)
@@ -171,7 +173,7 @@ class UNET(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.encoder = nn.ModuleList([
+        self.encoders = nn.ModuleList([
             # (Batch size, 4, ~Height/8, ~Width/8)
             SwitchSequential(nn.Conv2d(4, 320, kernel_size=3, padding=1)),
 
@@ -209,7 +211,7 @@ class UNET(nn.Module):
             UNET_ResidualBlock(1280, 1280),
         )
 
-        self.decoder = nn.ModuleList([
+        self.decoders = nn.ModuleList([
             # (Batch size, 2560, ~Height/64, ~Width/64) -> (Batch size, 1280, ~Height/64, ~Width/64)
             SwitchSequential(UNET_ResidualBlock(2560, 1280)),
 
@@ -235,8 +237,27 @@ class UNET(nn.Module):
 
             SwitchSequential(UNET_ResidualBlock(640, 320), UNET_AttentionBlock(8, 40)),
         ])
+    
+    def forward(self, x, context, time):
+        # x: (Batch_Size, 4, Height / 8, Width / 8)
+        # context: (Batch_Size, Seq_Len, Dim) 
+        # time: (1, 1280)
 
-class UNET_OutputLayer(nn.Moudle):
+        skip_connections = []
+        for layers in self.encoders:
+            x = layers(x, context, time)
+            skip_connections.append(x)
+
+        x = self.bottleneck(x, context, time)
+
+        for layers in self.decoders:
+            # Since we always concat with the skip connection of the encoder, the number of features increases before being sent to the decoder's layer
+            x = torch.cat((x, skip_connections.pop()), dim=1) 
+            x = layers(x, context, time)
+        
+        return x
+
+class UNET_OutputLayer(nn.Module):
     def __init__(self, in_channels: int, out_channels: int):
         super().__init__()
         self.groupnorm = nn.GroupNorm(32, in_channels)
@@ -258,9 +279,10 @@ class UNET_OutputLayer(nn.Moudle):
 
 class Diffusion(nn.Module):
     def __init__(self):
+        super().__init__()
         self.time_embedding = TimeEmbedding(320)
         self.unet = UNET()
-        self.output_layer = UNET_OutputLayer(320, 4)
+        self.final = UNET_OutputLayer(320, 4)
 
     def forward(self, latent: torch.Tensor, context: torch.Tensor, time: torch.Tensor) -> torch.Tensor:
         """
@@ -276,6 +298,6 @@ class Diffusion(nn.Module):
         output = self.unet(latent, context, time)
 
         # (Batch size, 320, ~Height/8, ~Width/8) -> (Batch size, 4, ~Height/8, ~Width/8)
-        output = self.output_layer(output)
+        output = self.final(output)
 
         return output

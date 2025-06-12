@@ -69,7 +69,7 @@ def generate(
 
         if sampler_name == "ddpm":
             sampler = DDPMSampler(generator)
-            sampler.set_inference_steps(n_inference_steps)
+            sampler.set_inference_timesteps(n_inference_steps)
         else:
             raise ValueError(f"Unknown sampler {sampler_name}")
         
@@ -121,7 +121,7 @@ def generate(
 
 
             if do_cfg:
-                output_cond, output_uncond = model_output.chunck(2)
+                output_cond, output_uncond = model_output.chunk(2)
                 model_output = cfg_scale * (output_cond - output_uncond) + output_uncond
 
             # Remove noise predicted by the UNET

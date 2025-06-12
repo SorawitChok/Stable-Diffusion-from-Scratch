@@ -28,7 +28,7 @@ class CLIPLayer(nn.Module):
         self.linear_1 = nn.Linear(d_model, d_model*4)
         self.linear_2 = nn.Linear(d_model*4, d_model)
 
-    def foward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         """
         input: (Batch size, Seq len, d_model)
         """
@@ -54,8 +54,9 @@ class CLIPLayer(nn.Module):
 
 class CLIP(nn.Module):
     def __init__(self):
+        super().__init__()
         self.embedding = CLIPEmbedding(49408, 768, 77)
-        self.layers = nn.Module([
+        self.layers = nn.ModuleList([
             CLIPLayer(12, 768) for i in range(12)
         ])
         self.layernorm = nn.LayerNorm(768)

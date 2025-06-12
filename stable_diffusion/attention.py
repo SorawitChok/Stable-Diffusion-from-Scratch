@@ -24,7 +24,7 @@ class SelfAttention(nn.Module):
         intermediate_shape = (batch_size, seq_len, self.n_heads, self.d_head)
 
         # (Batch size, Seq len, d_model) -> (Batch size, Seq len, d_model*3) -> three tensor of shape (Batch size, Seq len, d_model)
-        q, k, v = self.in_proj(input).chunk(3, d_model=-1)
+        q, k, v = self.in_proj(input).chunk(3, dim=-1)
 
         # Dk =  d_model/n_heads
         # (Batch size, Seq len, d_model) -> (Batch size, Seq len, n_heads, Dk) -> (Batch size, n_heads, Seq len, Dk)
@@ -41,7 +41,7 @@ class SelfAttention(nn.Module):
             weight.masked_fill_(mask, -torch.inf)
 
         weight /= math.sqrt(self.d_head)
-        weight = F.softmax(weight, d_model=-1)
+        weight = F.softmax(weight, dim=-1)
         
         # (Batch size, n_heads, Seq len, Seq len) @ (Batch size, n_heads, Seq len, Dk) -> (Batch size, n_heads, Seq len, Dk)
         output = weight @ v
