@@ -135,7 +135,7 @@ def generate(
         image = decoder(latents)
         to_idle(decoder)
 
-        image = rescale(image, (-1, 1), (0, 255))
+        image = rescale(image, (-1, 1), (0, 255), clamp=True)
         # (Btach size, Channels, Height, Width) -> (Batch size, Height, Width, Channels)
         image = image.permute(0, 2, 3, 1)
         image = image.to("cpu", torch.uint8).numpy()
