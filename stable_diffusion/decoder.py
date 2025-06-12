@@ -16,10 +16,12 @@ class VAE_AttentionBlock(nn.Module):
         """
         residue = input
 
-        n, c, h, w = input.shape
+        x = self.groupnorm(input)
+
+        n, c, h, w = x.shape
 
         # (Batch size, channels, Height, Width) -> (Batch size, channels, Height*Width)
-        x = input.view(n, c, h*w)
+        x = x.view((n, c, h*w))
 
         # (Batch size, channels, Height*Width) -> (Batch size, Height*Width, channels)
         x = x.transpose(-1, -2)
@@ -31,7 +33,7 @@ class VAE_AttentionBlock(nn.Module):
         x = x.transpose(-1, -2)
 
         # (Batch size, channels, Height*Width) -> (Batch size, channels, Height, Width)
-        x = x.view(n, c, h, w)
+        x = x.view((n, c, h, w))
 
         return x + residue
 

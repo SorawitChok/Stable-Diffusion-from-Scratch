@@ -56,11 +56,11 @@ class DDPMSampler:
         current_beta_t = 1 - current_alpha_t
 
         # Compute the predicted original sample using Equation (15) in DDPM paper
-        pred_original_sample = (latents - beta_prod_t ** 0.5 * model_output) / alpha_prod_t ** 0.5 
+        pred_original_sample = (latents - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5) 
 
         # Compute the coefficient for pred_original_sample and current sample x_t
-        pred_original_sample_coeff = (alpha_prod_t_prev ** 0.5 * current_beta_t) / beta_prod_t
-        current_sample_coeff = current_alpha_t ** 0.5 * beta_prod_t_prev / beta_prod_t
+        pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * current_beta_t) / beta_prod_t
+        current_sample_coeff = current_alpha_t ** (0.5) * beta_prod_t_prev / beta_prod_t
 
         # Compute the predicted previous sample mean
         pred_prev_sample = pred_original_sample_coeff * pred_original_sample + current_sample_coeff * latents

@@ -82,7 +82,7 @@ def generate(
             input_image_tensor = input_image.resize((WIDTH, HEIGHT))
             input_image_tensor = np.array(input_image_tensor)
             # (Height, Width, Channel)
-            input_image_tensor = torch.tensor(input_image_tensor, dtype=torch.float32)
+            input_image_tensor = torch.tensor(input_image_tensor, dtype=torch.float32, device=device)
             input_image_tensor = rescale(input_image_tensor, (0,255), (-1, 1))
             # (Height, Width, Channel) -> (Batch size, Height, Width, Channel)
             input_image_tensor = input_image_tensor.unsqueeze(0)
